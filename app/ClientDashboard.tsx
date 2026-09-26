@@ -496,14 +496,31 @@ export default function ClientDashboard({ initialTasks }: { initialTasks: any[] 
       <div className="absolute top-[30%] right-0 w-96 h-96 bg-teal-400/20 rounded-full blur-3xl pointer-events-none translate-x-1/4 z-0" />
       <div className="absolute bottom-0 left-[10%] w-80 h-80 bg-green-400/20 rounded-full blur-3xl pointer-events-none translate-y-1/4 z-0" />
 
-      <header className="flex-none pt-12 landscape:pt-4 pb-3 landscape:pb-1 px-6 landscape:px-10 relative z-30 bg-gray-950/40 backdrop-blur-xl border-b border-white/10 transition-all flex justify-between items-end">
-        <div>
-          <p className="text-white/60 text-[10px] font-bold tracking-widest uppercase mb-1">Welcome back, {username}</p>
-          <h1 className="text-3xl font-extrabold tracking-tight text-white">Schedule</h1>
+      <header className="flex-none pt-12 sm:pt-10 2xl:pt-14 pb-4 sm:pb-6 2xl:pb-8 px-6 sm:px-12 2xl:px-0 relative z-30 bg-gray-950/40 backdrop-blur-xl border-b border-white/10 transition-all">
+        {/* The max-w-screen-2xl wrapper keeps ultrawide displays looking perfect */}
+        <div className="flex justify-between items-end w-full max-w-screen-2xl mx-auto">
+          
+          <div>
+            <p className="text-white/60 text-[10px] sm:text-xs 2xl:text-sm font-bold tracking-widest uppercase mb-1 sm:mb-2 transition-all">
+              Welcome back, <span className="text-cyan-400">{username}</span>
+            </p>
+            <h1 className="text-3xl sm:text-4xl 2xl:text-5xl font-extrabold tracking-tight text-white transition-all">
+              Schedule
+            </h1>
+          </div>
+
+          {/* Upgraded Disconnect Button: Larger touch target for iOS, scaled padding for PCs */}
+          <button 
+            onClick={handleLogout} 
+            className="mb-1 sm:mb-2 flex items-center gap-2 text-[10px] sm:text-xs 2xl:text-sm font-bold tracking-widest uppercase px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-lg text-white/50 bg-white/5 hover:bg-red-500/10 hover:text-red-400 active:scale-95 transition-all cursor-pointer border border-white/5 hover:border-red-500/30"
+          >
+            <svg className="w-3 h-3 sm:w-4 sm:h-4 2xl:w-5 2xl:h-5 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            Disconnect
+          </button>
+          
         </div>
-        <button onClick={handleLogout} className="mb-1 text-[10px] font-bold tracking-widest uppercase text-white/40 hover:text-red-400 transition-colors cursor-pointer">
-          Disconnect
-        </button>
       </header>
 
       <main className="flex-1 overflow-y-auto overscroll-y-auto px-6 landscape:px-10 pt-5 landscape:pt-4 pb-[140px] landscape:pb-[100px] relative z-10 transition-all">
@@ -513,7 +530,7 @@ export default function ClientDashboard({ initialTasks }: { initialTasks: any[] 
             <p className="text-lg font-medium tracking-wide">Your day is perfectly clear.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 landscape:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 landscape:grid-cols-2 2xl:grid-cols-3 gap-4 sm:gap-6 2xl:gap-8 w-full max-w-screen-2xl mx-auto">
             {tasks.map((task) => {
               const isDone = task.isCompleted; 
               return (
