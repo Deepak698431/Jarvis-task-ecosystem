@@ -4,9 +4,24 @@ import clientPromise from '@/lib/mongodb';
 // 1. GET: Fetch all Tasks
 export async function GET() {
   try {
+    // 1. Extract Identity Headers
+    const username = request.headers.get('x-username');
+    const password = request.headers.get('x-app-password');
+
+    // 2. The Gatekeeper: Verify the Master Password
+    if (password !== process.env.APP_PASSWORD) {
+      console.error("Unauthorized access attempt rejected.");
+      return NextResponse.json({ error: "Unauthorized: Invalid App Password" }, { status: 401 });
+    }
+
+    // 3. The Router: Enforce Username Requirement
+    if (!username) {
+      return NextResponse.json({ error: "Bad Request: Username required" }, { status: 400 });
+    }
+    // 4. Database Fetch: Filter strictly by Username
     const client = await clientPromise;
     const db = client.db('todo_database');
-    const Tasks = await db.collection('Tasks').find({}).toArray();
+    const Tasks = await db.collection('Tasks').find({ user: username }).toArray();
     return NextResponse.json({ success: true, data: Tasks }, { status: 200 });
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -16,12 +31,27 @@ export async function GET() {
 // 2. POST: Add a new task
 export async function POST(request) {
   try {
+    // 1. Extract Identity Headers
+    const username = request.headers.get('x-username');
+    const password = request.headers.get('x-app-password');
+
+    // 2. The Gatekeeper: Verify the Master Password
+    if (password !== process.env.APP_PASSWORD) {
+      return NextResponse.json({ error: "Unauthorized: Invalid App Password" }, { status: 401 });
+    }
+
+    if (!username) {
+      return NextResponse.json({ error: "Bad Request: Username required" }, { status: 400 });
+    }
+
+    // 3. Read the incoming task data
     const body = await request.json();
     const client = await clientPromise;
     const db = client.db('todo_database');
 
     const newTask = {
       id: body.id,
+      user:username,
       description: body.description || '',
       priority: body.priority || 'P3',
       date : body.date || '' ,

@@ -21,12 +21,16 @@ const sortTasks = (taskList: any[]) => {
 };
 
 export default function ClientDashboard({ initialTasks }: { initialTasks: any[] }) {
+  // --- AUTH STATES ---
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [loginError, setLoginError] = useState("");
+
+  // --- TASK STATES ---
   const [tasks, setTasks] = useState(() => sortTasks(initialTasks || []));
   
-  useEffect(() => {
-    setTasks(sortTasks(initialTasks || []));
-  }, [initialTasks]);
-
   // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
@@ -45,10 +49,90 @@ export default function ClientDashboard({ initialTasks }: { initialTasks: any[] 
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiStatus, setAiStatus] = useState<string | null>(null);
 
-  // Ref to programmatically focus the input field for dictation fallback
   const aiInputRef = useRef<HTMLInputElement>(null);
 
-  // Time formatters
+  // --- AUTHENTICATION & INITIALIZATION ---
+
+  useEffect(() => {
+    const savedUser = localStorage.getItem('jarvis_user');
+    const savedPass = localStorage.getItem('jarvis_pass');
+
+    if (savedUser && savedPass) {
+      setUsername(savedUser);
+      setPassword(savedPass);
+      setIsAuthorized(true);
+      fetchUserTasks(savedUser, savedPass);
+    } else {
+      setAuthLoading(false);
+    }
+  }, []);
+
+  const fetchUserTasks = async (user: string, pass: string) => {
+    try {
+      const res = await fetch('/api/Tasks', {
+        headers: {
+          'x-username': user,
+          'x-app-password': pass
+        }
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setTasks(sortTasks(json.data || []));
+      }
+    } catch (err) {
+      console.error("Error fetching tasks:", err);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogin = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setLoginError("");
+
+    const cleanUser = username.trim();
+    const cleanPass = password.trim();
+
+    if (!cleanUser || !cleanPass) {
+      setLoginError("Please enter both Operator Name and System Passcode.");
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/Tasks', {
+        headers: {
+          'x-username': cleanUser,
+          'x-app-password': cleanPass
+        }
+      });
+
+      if (res.ok) {
+        localStorage.setItem('jarvis_user', cleanUser);
+        localStorage.setItem('jarvis_pass', cleanPass);
+        setIsAuthorized(true);
+        const json = await res.json();
+        setTasks(sortTasks(json.data || []));
+      } else if (res.status === 401) {
+        setLoginError("Invalid System Passcode.");
+      } else {
+        setLoginError("Connection failed. Check network or server status.");
+      }
+    } catch (err) {
+      setLoginError("Network error. Could not reach server.");
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('jarvis_user');
+    localStorage.removeItem('jarvis_pass');
+    setUsername("");
+    setPassword("");
+    setTasks([]);
+    setIsAuthorized(false);
+  };
+
+  // --- TIME FORMATTERS ---
+
   const formatTime = (timestamp: number) => {
     if (!timestamp) return "--:--";
     const d = new Date(timestamp * 1000);
@@ -72,7 +156,7 @@ export default function ClientDashboard({ initialTasks }: { initialTasks: any[] 
     return Math.floor(d.getTime() / 1000);
   };
 
-  // --- STRICT CRUD OPERATIONS ---
+  // --- STRICT CRUD OPERATIONS (WITH AUTH HEADERS) ---
 
   const toggleTaskComplete = async (taskId: number, currentStatus: boolean) => {
     const newStatus = !currentStatus;
@@ -83,7 +167,11 @@ export default function ClientDashboard({ initialTasks }: { initialTasks: any[] 
     try {
       const res = await fetch('/api/Tasks', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-username': username,
+          'x-app-password': password 
+        },
         body: JSON.stringify({ id: taskId, isCompleted: newStatus }) 
       });
       const data = await res.json();
@@ -99,7 +187,13 @@ export default function ClientDashboard({ initialTasks }: { initialTasks: any[] 
     setTasks(prev => sortTasks(prev.filter(t => t.id !== taskId))); 
     
     try {
-      const res = await fetch(`/api/Tasks?id=${taskId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/Tasks?id=${taskId}`, { 
+        method: 'DELETE',
+        headers: {
+          'x-username': username,
+          'x-app-password': password
+        }
+      });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error);
     } catch (err: any) {
@@ -159,7 +253,11 @@ export default function ClientDashboard({ initialTasks }: { initialTasks: any[] 
       try {
         const res = await fetch('/api/Tasks', {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-username': username,
+            'x-app-password': password 
+          },
           body: JSON.stringify({
             id: editingTaskId,
             description: formData.description,
@@ -190,7 +288,11 @@ export default function ClientDashboard({ initialTasks }: { initialTasks: any[] 
       try {
         const res = await fetch('/api/Tasks', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-username': username,
+            'x-app-password': password 
+          },
           body: JSON.stringify(newTask)
         });
         const data = await res.json();
@@ -210,10 +312,7 @@ export default function ClientDashboard({ initialTasks }: { initialTasks: any[] 
   const handleMicClick = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
-    // THE FIX: We now check window.isSecureContext. 
-    // If you are on HTTP (local IP), Android will safely fallback to the keyboard mic.
     if (SpeechRecognition && window.isSecureContext) {
-      // ANDROID / DESKTOP (HTTPS) ROUTE: True tap-to-speak
       const recognition = new SpeechRecognition();
       recognition.continuous = false;
       recognition.interimResults = false;
@@ -233,7 +332,6 @@ export default function ClientDashboard({ initialTasks }: { initialTasks: any[] 
         setAiStatus("Mic access denied. Use your keyboard mic instead.");
       };
     } else {
-      // iOS SAFARI & ANDROID (HTTP) ROUTE: Fallback to the keyboard mic trick
       if (aiInputRef.current) {
         aiInputRef.current.focus();
       }
@@ -250,9 +348,14 @@ export default function ClientDashboard({ initialTasks }: { initialTasks: any[] 
     try {
       const todayString = new Date().toISOString().split('T')[0];
 
+      // Assuming /api/ai also needs auth headers to process the request
       const aiResponse = await fetch('/api/ai', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-username': username,
+          'x-app-password': password 
+        },
         body: JSON.stringify({
           prompt: aiPrompt,
           currentDate: todayString
@@ -293,7 +396,11 @@ export default function ClientDashboard({ initialTasks }: { initialTasks: any[] 
 
       const taskRes = await fetch('/api/Tasks', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-username': username,
+          'x-app-password': password 
+        },
         body: JSON.stringify(newTask)
       });
 
@@ -318,15 +425,85 @@ export default function ClientDashboard({ initialTasks }: { initialTasks: any[] 
     }
   };
 
+  // --- RENDER BLOCK ---
+
+  if (authLoading) {
+    return (
+      <div className="flex h-[100dvh] w-full items-center justify-center bg-gray-950">
+        <div className="text-cyan-400 font-mono text-sm tracking-widest animate-pulse">Initializing Uplink...</div>
+      </div>
+    );
+  }
+
+  if (!isAuthorized) {
+    return (
+      <div className="relative h-[100dvh] w-full bg-gray-950 text-white font-sans overflow-hidden flex flex-col items-center justify-center p-4">
+        {/* Background Gradients */}
+        <div className="absolute top-0 left-0 w-96 h-96 bg-lime-400/10 rounded-full blur-3xl pointer-events-none -translate-x-1/4 -translate-y-1/4 z-0" />
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-cyan-400/10 rounded-full blur-3xl pointer-events-none translate-x-1/4 translate-y-1/4 z-0" />
+
+        <div className="relative z-10 w-full max-w-sm bg-gray-900/60 backdrop-blur-3xl border border-white/10 rounded-[32px] p-8 shadow-2xl animate-in fade-in zoom-in-95 duration-500">
+          <div className="flex justify-center mb-6">
+            <div className="w-12 h-12 rounded-full bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center">
+              <svg className="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" /></svg>
+            </div>
+          </div>
+          
+          <h1 className="text-2xl font-bold text-center text-white mb-2 tracking-tight">J.A.R.V.I.S. Gateway</h1>
+          <p className="text-xs text-center text-white/40 mb-8 uppercase tracking-widest">Operator Authentication</p>
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <input 
+                type="text"
+                placeholder="Operator Name (e.g. Deepak)"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-400/50 transition-colors text-sm"
+              />
+            </div>
+            <div>
+              <input 
+                type="password"
+                placeholder="System Passcode"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-400/50 transition-colors text-sm"
+              />
+            </div>
+
+            {loginError && (
+              <div className="text-red-400 text-xs text-center bg-red-500/10 border border-red-500/20 py-2 rounded-xl">
+                {loginError}
+              </div>
+            )}
+
+            <button 
+              type="submit"
+              className="w-full mt-2 bg-white text-black font-bold text-sm rounded-2xl py-3.5 active:scale-[0.98] transition-transform cursor-pointer shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+            >
+              Establish Uplink
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative h-[100dvh] w-full bg-gray-950 text-white font-sans select-none overflow-hidden flex flex-col">
       <div className="absolute top-0 left-0 w-96 h-96 bg-lime-400/20 rounded-full blur-3xl pointer-events-none -translate-x-1/4 -translate-y-1/4 z-0" />
       <div className="absolute top-[30%] right-0 w-96 h-96 bg-teal-400/20 rounded-full blur-3xl pointer-events-none translate-x-1/4 z-0" />
       <div className="absolute bottom-0 left-[10%] w-80 h-80 bg-green-400/20 rounded-full blur-3xl pointer-events-none translate-y-1/4 z-0" />
 
-      <header className="flex-none pt-12 landscape:pt-4 pb-3 landscape:pb-1 px-6 landscape:px-10 relative z-30 bg-gray-950/40 backdrop-blur-xl border-b border-white/10 transition-all">
-        <p className="text-white/60 text-[10px] font-bold tracking-widest uppercase mb-1">Welcome back, Deepak</p>
-        <h1 className="text-3xl font-extrabold tracking-tight text-white">Schedule</h1>
+      <header className="flex-none pt-12 landscape:pt-4 pb-3 landscape:pb-1 px-6 landscape:px-10 relative z-30 bg-gray-950/40 backdrop-blur-xl border-b border-white/10 transition-all flex justify-between items-end">
+        <div>
+          <p className="text-white/60 text-[10px] font-bold tracking-widest uppercase mb-1">Welcome back, {username}</p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-white">Schedule</h1>
+        </div>
+        <button onClick={handleLogout} className="mb-1 text-[10px] font-bold tracking-widest uppercase text-white/40 hover:text-red-400 transition-colors cursor-pointer">
+          Disconnect
+        </button>
       </header>
 
       <main className="flex-1 overflow-y-auto overscroll-y-auto px-6 landscape:px-10 pt-5 landscape:pt-4 pb-[140px] landscape:pb-[100px] relative z-10 transition-all">
